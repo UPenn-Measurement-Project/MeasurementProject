@@ -1,0 +1,37 @@
+Final measurements (left):
+
+6.725	7.785	41.565	58.745	49.435	76.85	39.66	136.89	121.34	122.39
+
+A: 299.20, 213.18
+B: 318.58, 225.42
+C: 348.50, 286.28
+D: 275.06, (198.56)
+E: 349.18, (245.14)
+F: 260.78, (189.72)
+G: 375.70, (261.46)
+
+W: 328.10, (286.28)
+X: 333.20, (286.28)
+Y: 361.76, (286.28)
+Z: 370.60, (286.28)
+
+K: (347.82), (212.84)
+
+
+
+
+
+TESTING IN PYTHON:
+
+testing = torch.tensor([
+    [299.20, 213.18, 318.58, 225.42, 348.50, 286.28, 275.06, 349.18, 260.78, 375.70, 328.10, 333.20, 361.76, 370.60]
+])
+
+testing *= scale_factor / pix_to_mm
+
+testans, testpt = one_side_points_to_measurements(testing, pix_to_mm, scale_factor)
+
+testpt *= pix_to_mm / scale_factor
+
+print(testans)
+print(testpt)
