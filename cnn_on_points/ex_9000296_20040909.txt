@@ -1,24 +1,65 @@
 Final measurements (left):
 
-6.725	7.785	41.565	58.745	49.435	76.85	39.66	136.89	121.34	122.39
+6.725, 7.785, 41.565, 58.745, 49.435, 76.85, 39.66, 136.89, 121.34, 122.39
+
+===
+
+RAW COORDINATES
 
 A: 299.20, 213.18
 B: 318.58, 225.42
 C: 348.50, 286.28
-D: 275.06, (198.56)
-E: 349.18, (245.14)
-F: 260.78, (189.72)
-G: 375.70, (261.46)
+D: 275.06, 198.56
+E: 349.18, 245.14
+F: 260.78, 189.72
+G: 375.70, 261.46
+H: 333.54, 215.22
 
-W: 328.10, (286.28)
-X: 333.20, (286.28)
-Y: 361.76, (286.28)
-Z: 370.60, (286.28)
+K: 347.82, 212.84
 
-K: (347.82), (212.84)
+W: 328.10, 286.28
+X: 333.20, 286.28
+Y: 361.76, 286.28
+Z: 370.60, 286.28
+
+===
+
+TESTING IN PYTHON (BEFORE SCALING WAS APPLIED SO THIS IS OUTDATED)
+
+testing = torch.tensor([[-14.2, 8.6, -22.6, 45.0, 20.2, -1.2, 17.0, -43.0, 20.0, 36.8, 42.0]]).to(device)
+testingres, testingab = model_to_coord(testing, device, True)
+
+testing = torch.tensor([[6.725, 7.785, 41.565, 58.745, 49.435, 76.85, 39.66, 136.89, 121.34, 122.39]]).to(device)
+testingres = measurements_to_coord(testing, testingab, pix_per_mm, img_scale_factor, device, True)
+
+coord_to_measurements(testingres, pix_per_mm, img_scale_factor)
+
+===
 
 
 
+
+
+----------------
+OLD STUFF BELOW
+----------------
+
+
+TRANSLATED COORDINATES TO A=(0,0)
+A: 0.00, 0.00  
+B: 19.38, 12.24  
+C: 49.30, 73.10
+D: -24.14, -14.62  
+E: 49.98, 31.96  
+F: -38.42, -23.46  
+G: 76.50, 48.28  
+K: 48.62, -0.34
+W: 0.00, 0.00  
+X: 5.10, 0.00
+Y: 33.66, 0.00
+Z: 42.50, 0.00
+
+testing = torch.tensor([[19.38, 12.24, 49.30, 73.10, -24.14, 49.98, -38.42, 76.50, 5.10, 33.66, 42.50]])
 
 
 TESTING IN PYTHON:
@@ -35,3 +76,23 @@ testpt *= pix_to_mm / scale_factor
 
 print(testans)
 print(testpt)
+
+
+
+
+
+
+
+TESTING FOR CUSTOM DATAPOINT CLASS:
+
+testing = DataPoint(img_dir, '9000296_20040909.dcm', False, df, img_width, img_height, 0, 1)
+testimg, testy = testing.get_image()
+plt.imshow(testimg.squeeze(), cmap = 'gray')
+plt.show()
+print(testy)
+
+testing = DataPoint(img_dir, '9000296_20040909.dcm', True, df, img_width, img_height, 0, 1)
+testimg, testy = testing.get_image()
+plt.imshow(testimg.squeeze(), cmap = 'gray')
+plt.show()
+print(testy)

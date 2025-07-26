@@ -1,5 +1,8 @@
 # Files
-cnn_on_points.ipynb: cnn to learn the points, no data augmentation
-cnn_on_points_with_augmentation.ipynb: cnn to learn the points, manual data augmentation
+*weighted_points: point identification cnn with H', A', A'', and weighted loss function
+brute_force: no point identification, cnn direct 10 measurements
+*new_points: new anchor on A, with H', A', A''
+*new_points_weighted: new anchor on A, with H', A', A'', C, edge emphasis
+testing: new_points_weighted with weighted loss
 
-points_ref.png: reference for points learned by model
+* means outdated (can delete)
