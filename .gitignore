@@ -1,3 +1,4 @@
 data/box_images
 cnn_on_points/model_saves
 cnn_on_points/keypoint_model_saves
+paper_testing/data
