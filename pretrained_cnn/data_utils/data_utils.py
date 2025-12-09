@@ -12,11 +12,12 @@ from torch.utils.data import Dataset, DataLoader
 
 #datapoint class
 class DataPoint:
-    def __init__(self, img_dir, img_file, img_flip, df, img_width, img_height, aug_rot = 0, aug_scale = 1, aug_crop = 1):
+    def __init__(self, img_dir, img_file, img_flip, df, img_width, img_height, sq_dim, aug_rot = 0, aug_scale = 1, aug_crop = 1):
         self.img_path = img_dir + "/" + img_file
         self.img_flip = img_flip
         self.img_width = img_width
         self.img_height = img_height
+        self.sq_dim = sq_dim
         self.aug_rot = aug_rot
         self.aug_scale = aug_scale
         self.aug_crop = aug_crop
@@ -59,6 +60,12 @@ class DataPoint:
         #rotate image
         img = TF.rotate(img, angle = self.aug_rot, interpolation = TF.InterpolationMode.BILINEAR)
 
+        #pad to square
+        pad_sq = sq_dim - self.img_height
+        pad_u = pad_sq // 2
+        pad_d = pad_sq - pad_u
+        img = F.pad(img, (0, 0, pad_u, pad_d), mode = "constant")
+
         #get measurements for correct side, rescale all measurements so they are in terms of pixels (except for angle measurement)
         y_aug = self.y.clone()
         if self.img_flip: #left side of image, right set of measurements
@@ -82,7 +89,7 @@ class ImageDataset(Dataset):
 
 #class for creating dataset
 class DataProcessor:
-    def __init__(self, measurement_file, img_dir, train_val_split, batch_size, img_width, img_height, seed):
+    def __init__(self, measurement_file, img_dir, train_val_split, batch_size, img_width, img_height, sq_dim, seed):
         self.measurement_file = "../data/measurements/" + measurement_file
         self.img_dir = "../data/" + img_dir
         self.train_split = train_val_split[0]
@@ -92,12 +99,13 @@ class DataProcessor:
         self.test_batch = batch_size[2]
         self.img_width = img_width
         self.img_height = img_height
+        self.sq_dim = sq_dim
         self.seed = seed
 
         #####measurement data#####
 
         self.df = pd.read_csv(self.measurement_file)
-        self.df.drop(columns = ["Student Name", "Notes", "Date Completed", "Unnamed: 24", "Unnamed: 25", "Unnamed: 26", "Unnamed: 27", "Unnamed: 28", "Unnamed: 29", "Unnamed: 30", "Unnamed: 31"], inplace = True)
+        self.df.drop(columns = ["Student Name", "Notes", "Date Completed", "Unnamed: 24", "Unnamed: 25", "Unnamed: 26", "Unnamed: 27", "Unnamed: 28", "Unnamed: 29", "Unnamed: 30", "Unnamed: 31"], inplace = True, errors = 'ignore')
         self.df = self.df.dropna() #get rid of na for now
 
         print(f"Used columns:\n{self.df.columns.values}\n")
@@ -149,7 +157,7 @@ class DataProcessor:
                 for aug_rot in np.arange(rot_rng[0], rot_rng[1] + 1e-8, rot_rng[2]):
                     for aug_scale in np.arange(scale_rng[0], scale_rng[1] + 1e-8, scale_rng[2]):
                         for aug_crop in np.arange(crop_rng[0], crop_rng[1] + 1e-8, crop_rng[2]):
-                            data_points.append(DataPoint(self.img_dir, img_file, img_flip, self.df, self.img_width, self.img_height, aug_rot, aug_scale, aug_crop))
+                            data_points.append(DataPoint(self.img_dir, img_file, img_flip, self.df, self.img_width, self.img_height, self.sq_dim, aug_rot, aug_scale, aug_crop))
         print(f"Loaded {ds_name} with {len(data_points)} points")
 
         dataset = ImageDataset(data_points)

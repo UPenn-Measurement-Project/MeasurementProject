@@ -6,9 +6,10 @@ from tqdm import tqdm
 import torch
 import torch.nn as nn
 import torch.optim as optim
+import torchxrayvision as xrv
 
 from data_utils.data_utils import DataProcessor
-from model.model import SimpleCNNModel, AlexNet, model_to_coord, measurements_to_coord, coord_to_measurements
+from femur_model.model import FemurModel, model_to_coord, measurements_to_coord, coord_to_measurements
 
 #==========#
 
@@ -30,7 +31,6 @@ parser = argparse.ArgumentParser(description = "Model training")
 parser.add_argument("--mdata", type = str, required = True, help = "Path to measurement data file (from ../data/measurements)")
 parser.add_argument("--idata", type = str, required = True, help = "Path to image data directory (from ../data)")
 parser.add_argument("--ds", type = str, required = True, help = "Dataset to test on (train, valid, test)")
-parser.add_argument("--model", type = str, required = True, help = "Model type (basic, alex)")
 
 parser.add_argument("--path", type = str, default = "current_best.pth", required = False, help = "Model path (from ./model_saves/)")
 parser.add_argument("--bn", type = str, default = "none", required = False, help = "Batch norm setting (none, before, after)")
@@ -45,15 +45,15 @@ args = parser.parse_args()
 
 #settings
 
-pix_per_mm = 2400 / 408 
-img_scale_factor = 0.1 
+pix_per_mm = 2400 / 408
+sq_dim = 224
+img_scale_factor = sq_dim / 2400
 img_width = int(2400 * img_scale_factor)
 img_height = int(1920 * img_scale_factor)
 
 measurement_file = args.mdata
 img_dir = args.idata
 test_set_name = args.ds.lower()
-model_name = args.model
 
 model_path = args.path
 batch_norm_setting = args.bn
@@ -68,8 +68,6 @@ batch_sizes = (train_batch_size, val_batch_size, test_batch_size)
 #checks
 if test_set_name not in ["train", "valid", "test"]:
     raise ValueError(f"Unknown dataset name \"{test_set_name}\"")
-if model_name not in ["basic", "alex"]:
-    raise ValueError(f"Unknown model type: {model_name}")
 if batch_norm_setting not in ["none", "before", "after"]:
     raise ValueError(f"Unknown batch norm setting: {batch_norm_setting}")
 
@@ -82,16 +80,13 @@ print(f"Batch size: {batch_sizes}\n")
 #==========#
 
 print("==========\n\nBegin dataset loading:\n")
-data_processor = DataProcessor(measurement_file, img_dir, (train_split, val_split), batch_sizes, img_width, img_height, seed)
+data_processor = DataProcessor(measurement_file, img_dir, (train_split, val_split), batch_sizes, img_width, img_height, sq_dim, seed)
 dataset, dataloader = data_processor.create_ds(test_set_name)
 
 #==========#
 
 #model set up
-if model_name == "basic":
-    model = SimpleCNNModel(img_width, img_height, batch_norm_setting)
-elif model_name == "alex":
-    model = AlexNet(img_width, img_height, batch_norm_settingg)
+model = FemurModel()
 
 model.load_state_dict(torch.load(f"./model_saves/{model_path}"))
 print(f"\n==========\n\nModel loaded from./model_saves/{model_path}")

@@ -5,10 +5,10 @@ from tqdm import tqdm
 import torch
 import torch.nn as nn
 import torch.optim as optim
+import torchxrayvision as xrv
 
 from data_utils.data_utils import DataProcessor
-#from data_utils.old_du import DataProcessor
-from model.model import SimpleCNNModel, AlexNet, model_to_coord, measurements_to_coord, coord_to_measurements
+from femur_model.model import FemurModel, model_to_coord, measurements_to_coord, coord_to_measurements
 
 #==========#
 
@@ -29,7 +29,6 @@ parser = argparse.ArgumentParser(description = "Model training")
 
 parser.add_argument("--mdata", type = str, required = True, help = "Path to measurement data file (from ../data/measurements)")
 parser.add_argument("--idata", type = str, required = True, help = "Path to image data directory (from ../data)")
-parser.add_argument("--model", type = str, required = True, help = "Model type (basic, alex)")
 
 parser.add_argument("--aug", action = "store_true", help = "Augment training and validation sets")
 
@@ -50,13 +49,13 @@ args = parser.parse_args()
 #settings
 
 pix_per_mm = 2400 / 408
-img_scale_factor = 0.1
+sq_dim = 224
+img_scale_factor = sq_dim / 2400
 img_width = int(2400 * img_scale_factor)
 img_height = int(1920 * img_scale_factor)
 
 measurement_file = args.mdata
 img_dir = args.idata
-model_name = args.model
 
 aug_data = args.aug
 
@@ -73,13 +72,8 @@ val_batch_size = args.val_bs
 test_batch_size = args.test_bs
 batch_sizes = (train_batch_size, val_batch_size, test_batch_size)
 
-if model_name not in ["basic", "alex"]:
-    raise ValueError(f"Unknown model type: {model_name}")
-if batch_norm_setting not in ["none", "before", "after"]:
-    raise ValueError(f"Unknown batch norm setting: {batch_norm_setting}")
-
 print("\nSelected settings:\n")
-print(f"Measurement file: {measurement_file}\nImage directory: {img_dir}\nModel: {model_name}\n")
+print(f"Measurement file: {measurement_file}\nImage directory: {img_dir}\n")
 print(f"Augment data: {aug_data}\nMax epoch cnt: {epoch_cnt}\nBatch norm setting: {batch_norm_setting}\nLearning rate: {learning_rate}\nEarly stopping limit: {early_stop_lim}\nLoad pretrained: {load_path}\nTorch seed: {seed}\n")
 print(f"Data split: {(train_split, val_split, 1 - train_split - val_split)}")
 print(f"Batch size: {batch_sizes}\n")
@@ -88,7 +82,7 @@ print(f"Batch size: {batch_sizes}\n")
 
 #data
 print("==========\n\nBegin dataset loading:\n")
-data_processor = DataProcessor(measurement_file, img_dir, (train_split, val_split), batch_sizes, img_width, img_height, seed)
+data_processor = DataProcessor(measurement_file, img_dir, (train_split, val_split), batch_sizes, img_width, img_height, sq_dim, seed)
 if aug_data:
     train_set, train_loader = data_processor.create_ds("train", (-10, 10, 10), (0.5, 1, 0.25), (0.6, 1, 0.2)) #tuples are augmentation values
     val_set, val_loader = data_processor.create_ds("valid", (-10, 10, 10), (0.5, 1, 0.25), (0.6, 1, 0.2)) #tuples are augmentation values
@@ -96,13 +90,13 @@ else:
     train_set, train_loader = data_processor.create_ds("train") #tuples are augmentation values
     val_set, val_loader = data_processor.create_ds("valid") #tuples are augmentation values
 
+
 #==========#
 
 #model set up
-if model_name == "basic":
-    model = SimpleCNNModel(img_width, img_height, batch_norm_setting)
-elif model_name == "alex":
-    model = AlexNet(img_width, img_height, batch_norm_setting)
+model = FemurModel()
+for param in model.backbone.parameters():
+    param.requires_grad = False
 
 if load_path:
     model.load_state_dict(torch.load(f"./model_saves/{load_path}"))
