@@ -1,6 +1,7 @@
 #imports
 import argparse
 import matplotlib.pyplot as plt
+import pandas as pd
 from tqdm import tqdm
 
 import torch
@@ -32,6 +33,8 @@ parser.add_argument("--idata", type = str, required = True, help = "Path to imag
 parser.add_argument("--ds", type = str, required = True, help = "Dataset to test on (train, valid, test)")
 parser.add_argument("--model", type = str, required = True, help = "Model type (basic, alex)")
 
+parser.add_argument("--makecsv", action = "store_true", help = "Make a CSV of predicted vs actual measurements")
+
 parser.add_argument("--path", type = str, default = "current_best.pth", required = False, help = "Model path (from ./model_saves/)")
 parser.add_argument("--bn", type = str, default = "none", required = False, help = "Batch norm setting (none, before, after)")
 parser.add_argument("--seed", type = int, default = 42, required = False, help = "Torch seed")
@@ -55,6 +58,8 @@ img_dir = args.idata
 test_set_name = args.ds.lower()
 model_name = args.model
 
+make_csv = args.makecsv
+
 model_path = args.path
 batch_norm_setting = args.bn
 seed = args.seed
@@ -74,7 +79,7 @@ if batch_norm_setting not in ["none", "before", "after"]:
     raise ValueError(f"Unknown batch norm setting: {batch_norm_setting}")
 
 print("\nSelected settings:\n")
-print(f"Measurement file: {measurement_file}\nImage directory: {img_dir}\nSelected dataset: {test_set_name}\n")
+print(f"Measurement file: {measurement_file}\nImage directory: {img_dir}\nSelected dataset: {test_set_name}\nMake result CSV: {make_csv}\n")
 print(f"Batch norm setting: {batch_norm_setting}\nTorch seed: {seed}\n")
 print(f"Data split: {(train_split, val_split, 1 - train_split - val_split)}")
 print(f"Batch size: {batch_sizes}\n")
@@ -91,7 +96,7 @@ dataset, dataloader = data_processor.create_ds(test_set_name)
 if model_name == "basic":
     model = SimpleCNNModel(img_width, img_height, batch_norm_setting)
 elif model_name == "alex":
-    model = AlexNet(img_width, img_height, batch_norm_settingg)
+    model = AlexNet(img_width, img_height, batch_norm_setting)
 
 model.load_state_dict(torch.load(f"./model_saves/{model_path}"))
 print(f"\n==========\n\nModel loaded from./model_saves/{model_path}")
@@ -104,6 +109,19 @@ model.eval()
 
 all_errs = None
 total_percent_err = torch.zeros(10).to(device)
+all_measurements = None
+
+
+mnames = ["M. Cortical", "L. Cortical", "Shaft Width", "F. Head Diam.", "H. Offset", "V. Offset", "F. Neck Width", "Hip Axis Length", "F. Neck Axis Length", "F. Neck-Shaft Ang."]
+mcols = []
+for i in mnames:
+    mcols.append(i + " (pred)")
+    mcols.append(i + " (true)")
+    mcols.append(i + " (err)")
+resrows = []
+finrow = {"id": "avg"}
+for i in mcols:
+    finrow[i] = 0
 
 with torch.no_grad():
     for idx, (images, yvals, aug_scales) in enumerate(tqdm(dataloader, unit = "batch")):
@@ -114,13 +132,16 @@ with torch.no_grad():
         model_out = model(images)
         model_coord, ab = model_to_coord(model_out)
         real_coord = measurements_to_coord(yvals, ab, pix_per_mm, img_scale_factor)
+        ypred = coord_to_measurements(model_coord, pix_per_mm, img_scale_factor)
 
-        errs = torch.abs(yvals - coord_to_measurements(model_coord, pix_per_mm, img_scale_factor))
+        errs = torch.abs(yvals - ypred)
         if all_errs is None:
             all_errs = errs
+            all_measurements = yvals
         else:
             all_errs = torch.cat((all_errs, errs), dim = 0)
-        total_percent_err += torch.sum(torch.abs(yvals - coord_to_measurements(model_coord, pix_per_mm, img_scale_factor)) / yvals, dim = 0)
+            all_measurements = torch.cat((all_measurements, yvals), dim = 0)
+        total_percent_err += torch.sum(torch.abs(yvals - ypred) / yvals, dim = 0)
 
         plt.figure(figsize = (6, 3))
         plt.subplot(1, 2, 1)
@@ -142,7 +163,31 @@ with torch.no_grad():
         plt.xlabel('x (pixels)')
         plt.ylabel('y (pixels)')
 
-        plt.savefig(f"./test_results/{idx}.png")
+        plt.savefig(f"./test_results/img/{idx}.png")
+
+        if make_csv:
+            for i in range(yvals.shape[0]):
+                currow = {"id": idx * yvals.shape[0] + i}
+                for j in range(10):
+                    v1 = ypred[i][j].item()
+                    v2 = yvals[i][j].item()
+                    v3 = v1 - v2
+                    
+                    finrow[mcols[3 * j]] += v1
+                    finrow[mcols[3 * j + 1]] += v2
+                    finrow[mcols[3 * j + 2]] += abs(v3)
+
+                    currow[mcols[3 * j]] = round(v1, 3)
+                    currow[mcols[3 * j + 1]] = round(v2, 3)
+                    currow[mcols[3 * j + 2]] = round(v3, 3)
+                resrows.append(currow)
+
+if make_csv:
+    for i in mcols:
+        finrow[i] = round(finrow[i] / len(dataset), 3)
+    resrows.append(finrow)
+    df = pd.DataFrame(resrows)
+    df.to_csv("./test_results/results.csv", index = False)
 
 print("\n==========\n\nDone\n")
 
@@ -150,5 +195,19 @@ print(f'Percent error for each measurement:')
 for i in total_percent_err:
     print(f'{(i.item() / len(dataset)):.4f}', end = ' ')
 print()
-print(all_errs.mean(dim = 0))
-print(all_errs.std(dim = 0, unbiased = True))
+
+print("Mean of absolute errors:")
+print([round(i, 3) for i in all_errs.mean(dim = 0).tolist()])
+print()
+
+print("Std dev of absolute errors:")
+print([round(i, 3) for i in all_errs.std(dim = 0, unbiased = True).tolist()])
+print()
+
+print("Mean of true measurements:")
+print([round(i, 3) for i in all_measurements.mean(dim = 0).tolist()])
+print()
+
+print("Std dev of true measurements:")
+print([round(i, 3) for i in all_measurements.std(dim = 0, unbiased = True).tolist()])
+print()
