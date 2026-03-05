@@ -31,6 +31,8 @@ parser = argparse.ArgumentParser(description = "Model training")
 parser.add_argument("--ds", type = str, required = True, help = "Dataset to test on (train, valid, test)")
 
 parser.add_argument("--path", type = str, default = "current_best.pth", required = False, help = "Model path (from ./model_saves/)")
+parser.add_argument("--noise", action = "store_true", help = "Fill image will noise")
+parser.add_argument("--mirror", action = "store_true", help = "Mirror femur to left")
 parser.add_argument("--seed", type = int, default = 42, required = False, help = "Torch seed")
 parser.add_argument("--train_split", type = float, default = 0.8, required = False, help = "Training set split")
 parser.add_argument("--val_split", type = float, default = 0.1, required = False, help = "Validation set split")
@@ -50,6 +52,8 @@ tar_height = 192
 test_set_name = args.ds.lower()
 
 model_path = args.path
+fill_noise = args.noise
+mirror = args.mirror
 seed = args.seed
 train_split = args.train_split
 val_split = args.val_split
@@ -71,7 +75,7 @@ print(f"Batch size: {batch_sizes}\n")
 #==========#
 
 print("==========\n\nBegin dataset loading:\n")
-data_processor = DataProcessor((train_split, val_split), batch_sizes, og_width, og_height, tar_width, tar_height, seed)
+data_processor = DataProcessor((train_split, val_split), batch_sizes, og_width, og_height, tar_width, tar_height, seed, fill_noise, mirror)
 dataset, dataloader = data_processor.create_ds(test_set_name)
 
 #==========#

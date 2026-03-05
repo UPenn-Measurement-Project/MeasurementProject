@@ -30,7 +30,12 @@ parser = argparse.ArgumentParser(description = "Model training")
 parser.add_argument("--epoch", type = int, default = 100, required = False, help = "Max number of epochs")
 parser.add_argument("--lr", type = float, default = 1e-3, required = False, help = "Learning rate")
 parser.add_argument("--esl", type = int, default = 5, required = False, help = "Number of epochs with no improvement to early stop training")
+
 parser.add_argument("--load", type = str, default = "", required = False, help = "Load a model to continue training (./model_saves)")
+
+parser.add_argument("--noise", action = "store_true", help = "Fill image will noise")
+parser.add_argument("--mirror", action = "store_true", help = "Mirror femur to left")
+
 parser.add_argument("--seed", type = int, default = 42, required = False, help = "Torch seed")
 parser.add_argument("--train_split", type = float, default = 0.8, required = False, help = "Training set split")
 parser.add_argument("--val_split", type = float, default = 0.1, required = False, help = "Validation set split")
@@ -51,6 +56,8 @@ epoch_cnt = args.epoch
 learning_rate = args.lr
 early_stop_lim = args.esl
 load_path = None if args.load == "" else args.load
+fill_noise = args.noise
+mirror = args.mirror
 seed = args.seed
 train_split = args.train_split
 val_split = args.val_split
@@ -68,7 +75,7 @@ print(f"Batch size: {batch_sizes}\n")
 
 #data
 print("==========\n\nBegin dataset loading:\n")
-data_processor = DataProcessor((train_split, val_split), batch_sizes, og_width, og_height, tar_width, tar_height, seed)
+data_processor = DataProcessor((train_split, val_split), batch_sizes, og_width, og_height, tar_width, tar_height, seed, fill_noise, mirror)
 train_set, train_loader = data_processor.create_ds("train")
 val_set, val_loader = data_processor.create_ds("valid")
 
