@@ -65,7 +65,7 @@ class Encoder(nn.Module):
 
 #keypoint detection decoder
 class Decoder(nn.Module):
-    def __init__(self, channel_cnt = [1, 32, 64, 128, 256]):
+    def __init__(self, fin_ch = 1, channel_cnt = [1, 32, 64, 128, 256]):
         super().__init__()
 
         self.conv1 = nn.Sequential(
@@ -99,7 +99,7 @@ class Decoder(nn.Module):
             nn.Conv2d(2 * channel_cnt[1], channel_cnt[1], kernel_size = 3, stride = 1, padding = 1),
             nn.BatchNorm2d(channel_cnt[1]),
             nn.ReLU(),
-            nn.Conv2d(channel_cnt[1], channel_cnt[0], kernel_size = 3, stride = 1, padding = 1),
+            nn.Conv2d(channel_cnt[1], fin_ch, kernel_size = 3, stride = 1, padding = 1),
             nn.Sigmoid()
         )
 
@@ -124,11 +124,11 @@ class Decoder(nn.Module):
 
 #full model
 class SegUNet(nn.Module):
-    def __init__(self, channel_cnt = [1, 32, 64, 128, 256]):
+    def __init__(self, fin_ch = 1, channel_cnt = [1, 32, 64, 128, 256]):
         super().__init__()
 
         self.encoder = Encoder(channel_cnt)
-        self.decoder = Decoder(channel_cnt)
+        self.decoder = Decoder(fin_ch, channel_cnt)
 
     def forward(self, x):
         x = self.encoder(x)

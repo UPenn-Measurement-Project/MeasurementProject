@@ -2,3 +2,4 @@ data/box_images
 data/segmentation
 **/paper_testing/data
 **/test_results
+*.pth

@@ -92,6 +92,8 @@ print("\n==========\n\nTesting started\n\n")
 model.to(device)
 model.eval()
 
+dice_scores = []
+
 with torch.no_grad():
     for idx, (xrays, segs) in enumerate(tqdm(dataloader, unit = "batch")):
         xrays = xrays.to(device)
@@ -99,13 +101,18 @@ with torch.no_grad():
 
         pred = model(xrays)
 
+        pred_bin = (pred > 0.5).float()
+        intersection = (pred_bin * segs).sum(dim = (1, 2, 3))
+        dice = (2.0 * intersection) / (pred_bin.sum(dim = (1, 2, 3)) + segs.sum(dim = (1, 2, 3)) + 1e-8)
+        dice_scores.extend(dice.cpu().tolist())
+
         plt.figure(figsize = (12, 3))
         plt.subplot(1, 4, 1)
         plt.imshow(xrays[0][0].detach().cpu(), cmap = 'gray')
 
         plt.subplot(1, 4, 2)
         plt.imshow(segs[0][0].detach().cpu(), cmap = 'gray')
-        
+
         plt.subplot(1, 4, 3)
         plt.imshow(pred[0][0].detach().cpu(), cmap = 'gray')
 
@@ -116,4 +123,10 @@ with torch.no_grad():
 
         plt.savefig(f"./test_results/img/{idx}.png")
 
+mean_dice = sum(dice_scores) / len(dice_scores)
+print(f"\n==========\n\nDice Coefficient Results ({test_set_name} set):")
+print(f"  Mean:  {mean_dice:.4f}")
+print(f"  Min:   {min(dice_scores):.4f}")
+print(f"  Max:   {max(dice_scores):.4f}")
+print(f"  Count: {len(dice_scores)}")
 print("\n==========\n\nDone\n")
