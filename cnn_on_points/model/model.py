@@ -170,8 +170,12 @@ class SimpleCNNModel(nn.Module):
             BNRelu(256, bn),
             nn.MaxPool2d(2),
 
+            nn.Conv2d(256, 256, kernel_size = 3, padding = 1),
+            BNRelu(256, bn),
+            nn.MaxPool2d(2),
+
             nn.Flatten(),
-            nn.Linear(256 * (img_width // 16) * (img_height // 16), 4096),
+            nn.Linear(256 * (img_width // 32) * (img_height // 32), 4096),
             nn.ReLU(),
             # nn.Dropout(0.5),
             nn.Linear(4096, 11)

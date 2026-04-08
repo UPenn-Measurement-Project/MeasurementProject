@@ -8,8 +8,9 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 
-from data_utils.data_utils import DataProcessor
-from model.model import HeatmapsModel, measurements_to_coord, coord_to_measurements, abs_kp_to_coord, get_ab
+from seg_heatmaps.data_utils.data_utils import DataProcessor
+from SEGMENTATIONS.mod_seg.model.model import SegUNet
+from seg_heatmaps.model.model import measurements_to_coord, coord_to_measurements, abs_kp_to_coord, get_ab, heatmaps_to_keypoints
 
 #==========#
 
@@ -26,42 +27,36 @@ else:
 
 #parser
 
-parser = argparse.ArgumentParser(description = "Model training")
+parser = argparse.ArgumentParser(description = "Model testing")
 
-parser.add_argument("--mdata", type = str, required = True, help = "Path to measurement data file (from ../data/measurements)")
-parser.add_argument("--idata", type = str, required = True, help = "Path to image data directory (from ../data)")
+parser.add_argument("--mdata", type = str, required = True, help = "Path to measurement data file (from ./data/measurements)")
 parser.add_argument("--ds", type = str, required = True, help = "Dataset to test on (train, valid, test)")
-parser.add_argument("--model", type = str, required = True, help = "Model type (hm)")
 
 parser.add_argument("--makecsv", action = "store_true", help = "Make a CSV of predicted vs actual measurements")
 
-parser.add_argument("--path", type = str, default = "current_best.pth", required = False, help = "Model path (from ./model_saves/)")
-parser.add_argument("--bn", type = str, default = "none", required = False, help = "Batch norm setting (none, before, after)")
+parser.add_argument("--path", type = str, default = "current_best.pth", required = False, help = "Model path (from ./seg_heatmaps/model_saves/)")
 parser.add_argument("--seed", type = int, default = 42, required = False, help = "Torch seed")
 parser.add_argument("--train_split", type = float, default = 0.8, required = False, help = "Training set split")
 parser.add_argument("--val_split", type = float, default = 0.1, required = False, help = "Validation set split")
 parser.add_argument("--train_bs", type = int, default = 1, required = False, help = "Training set batch size")
 parser.add_argument("--val_bs", type = int, default = 1, required = False, help = "Validation set batch size")
-parser.add_argument("--test_bs", type = int, default = 1, required = False, help = "Testiing set batch size")
+parser.add_argument("--test_bs", type = int, default = 1, required = False, help = "Testing set batch size")
 
 args = parser.parse_args()
 
 #settings
 
-pix_per_mm = 2400 / 408 
-img_scale_factor = 0.1 
-img_width = int(2400 * img_scale_factor)
-img_height = int(1920 * img_scale_factor)
+pix_per_mm = 2400 / 408
+img_scale_factor = 0.1
+img_width = 240
+img_height = 192
 
 measurement_file = args.mdata
-img_dir = args.idata
 test_set_name = args.ds.lower()
-model_name = args.model
 
 make_csv = args.makecsv
 
 model_path = args.path
-batch_norm_setting = args.bn
 seed = args.seed
 train_split = args.train_split
 val_split = args.val_split
@@ -73,31 +68,27 @@ batch_sizes = (train_batch_size, val_batch_size, test_batch_size)
 #checks
 if test_set_name not in ["train", "valid", "test"]:
     raise ValueError(f"Unknown dataset name \"{test_set_name}\"")
-if model_name not in ["hm"]:
-    raise ValueError(f"Unknown model type: {model_name}")
-if batch_norm_setting not in ["none", "before", "after"]:
-    raise ValueError(f"Unknown batch norm setting: {batch_norm_setting}")
 
 print("\nSelected settings:\n")
-print(f"Measurement file: {measurement_file}\nImage directory: {img_dir}\nSelected dataset: {test_set_name}\nMake result CSV: {make_csv}\n")
-print(f"Batch norm setting: {batch_norm_setting}\nTorch seed: {seed}\n")
+print(f"Measurement file: {measurement_file}\nSelected dataset: {test_set_name}\nMake result CSV: {make_csv}\n")
+print(f"Torch seed: {seed}\n")
 print(f"Data split: {(train_split, val_split, 1 - train_split - val_split)}")
 print(f"Batch size: {batch_sizes}\n")
 
 #==========#
 
 print("==========\n\nBegin dataset loading:\n")
-data_processor = DataProcessor(measurement_file, img_dir, (train_split, val_split), batch_sizes, img_width, img_height, seed)
-dataset, dataloader = data_processor.create_ds(test_set_name)
+NOISE_AUG = (0, 0.5, 0.25)
+data_processor = DataProcessor(measurement_file, (train_split, val_split), batch_sizes, img_width, img_height, seed)
+dataset, dataloader = data_processor.create_ds(test_set_name, noise_rng = NOISE_AUG)
 
 #==========#
 
 #model set up
-if model_name == "hm":
-    model = HeatmapsModel(img_width, img_height, 13) #include A
+model = SegUNet(13)
 
-model.load_state_dict(torch.load(f"./model_saves/{model_path}"))
-print(f"\n==========\n\nModel loaded from./model_saves/{model_path}")
+model.load_state_dict(torch.load(f"./seg_heatmaps/model_saves/{model_path}", map_location = "cpu"))
+print(f"\n==========\n\nModel loaded from ./seg_heatmaps/model_saves/{model_path}")
 
 #testing
 print("\n==========\n\nTesting started\n\n")
@@ -127,7 +118,8 @@ with torch.no_grad():
         yvals = yvals.to(device)
         aug_scales = aug_scales.to(device)
 
-        abs_coord = model(images)
+        hm = model(images)
+        abs_coord = heatmaps_to_keypoints(hm)
         model_coord = abs_kp_to_coord(abs_coord)
         ab = get_ab(model_coord)
         real_coord = measurements_to_coord(yvals, ab, pix_per_mm, img_scale_factor)
@@ -169,7 +161,7 @@ with torch.no_grad():
         plt.xlabel('x (pixels)')
         plt.ylabel('y (pixels)')
 
-        plt.savefig(f"./test_results/img/{idx}.png")
+        plt.savefig(f"./seg_heatmaps/test_results/img/{idx}.png")
 
         if make_csv:
             for i in range(yvals.shape[0]):
@@ -178,7 +170,7 @@ with torch.no_grad():
                     v1 = ypred[i][j].item()
                     v2 = yvals[i][j].item()
                     v3 = v1 - v2
-                    
+
                     finrow[mcols[3 * j]] += v1
                     finrow[mcols[3 * j + 1]] += v2
                     finrow[mcols[3 * j + 2]] += abs(v3)
@@ -193,7 +185,7 @@ if make_csv:
         finrow[i] = round(finrow[i] / len(dataset), 3)
     resrows.append(finrow)
     df = pd.DataFrame(resrows)
-    df.to_csv("./test_results/results.csv", index = False)
+    df.to_csv("./seg_heatmaps/test_results/results.csv", index = False)
 
 print("\n==========\n\nDone\n")
 
