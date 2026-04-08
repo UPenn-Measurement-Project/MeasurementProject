@@ -49,7 +49,7 @@ args = parser.parse_args()
 #settings
 
 pix_per_mm = 2400 / 408 
-img_scale_factor = 0.2
+img_scale_factor = 0.1
 img_width = int(2400 * img_scale_factor)
 img_height = int(1920 * img_scale_factor)
 
