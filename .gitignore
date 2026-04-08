@@ -3,3 +3,5 @@ data/segmentation
 **/paper_testing/data
 **/test_results
 *.pth
+__pycache__/
+.DS_Store

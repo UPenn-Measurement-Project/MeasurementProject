@@ -7,9 +7,8 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 
-from heatmaps_backbone.data_utils.data_utils import DataProcessor
-from SEGMENTATIONS.mod_seg.model.model import SegUNet
-from heatmaps_backbone.model.model import measurements_to_coord, coord_to_measurements, abs_kp_to_coord, get_ab, heatmaps_to_keypoints
+from seg_heatmaps.data_utils.data_utils import DataProcessor
+from dual_heatmaps.model.model import DualSegHeatmaps, measurements_to_coord, coord_to_measurements, abs_kp_to_coord, get_ab, heatmaps_to_keypoints
 
 #==========#
 
@@ -35,14 +34,14 @@ parser.add_argument("--aug", action = "store_true", help = "Augment training and
 parser.add_argument("--epoch", type = int, default = 100, required = False, help = "Max number of epochs")
 parser.add_argument("--lr", type = float, default = 1e-3, required = False, help = "Learning rate")
 parser.add_argument("--esl", type = int, default = 5, required = False, help = "Number of epochs with no improvement to early stop training")
-parser.add_argument("--load", type = str, default = "", required = False, help = "Load a model to continue training (./heatmaps_backbone/model_saves)")
+parser.add_argument("--load", type = str, default = "", required = False, help = "Load a model to continue training (./dual_heatmaps/model_saves)")
 
 parser.add_argument("--seed", type = int, default = 42, required = False, help = "Torch seed")
 parser.add_argument("--train_split", type = float, default = 0.8, required = False, help = "Training set split")
 parser.add_argument("--val_split", type = float, default = 0.1, required = False, help = "Validation set split")
 parser.add_argument("--train_bs", type = int, default = 64, required = False, help = "Training set batch size")
 parser.add_argument("--val_bs", type = int, default = 64, required = False, help = "Validation set batch size")
-parser.add_argument("--test_bs", type = int, default = 32, required = False, help = "Testiing set batch size")
+parser.add_argument("--test_bs", type = int, default = 32, required = False, help = "Testing set batch size")
 
 args = parser.parse_args()
 
@@ -83,32 +82,34 @@ print("==========\n\nBegin dataset loading:\n")
 data_processor = DataProcessor(measurement_file, (train_split, val_split), batch_sizes, img_width, img_height, seed)
 NOISE_AUG = (0, 0.5, 0.25)
 if aug_data:
-    train_set, train_loader = data_processor.create_ds("train", (-10, 10, 10), (0.5, 1, 0.25), (0.6, 1, 0.2), NOISE_AUG) #tuples are augmentation values
-    val_set, val_loader = data_processor.create_ds("valid", (-10, 10, 10), (0.5, 1, 0.25), (0.6, 1, 0.2), NOISE_AUG) #tuples are augmentation values
+    train_set, train_loader = data_processor.create_ds("train", (-10, 10, 10), (0.5, 1, 0.25), (0.6, 1, 0.2), NOISE_AUG)
+    val_set, val_loader = data_processor.create_ds("valid", (-10, 10, 10), (0.5, 1, 0.25), (0.6, 1, 0.2), NOISE_AUG)
 else:
-    train_set, train_loader = data_processor.create_ds("train", noise_rng = NOISE_AUG) #tuples are augmentation values
-    val_set, val_loader = data_processor.create_ds("valid", noise_rng = NOISE_AUG) #tuples are augmentation values
+    train_set, train_loader = data_processor.create_ds("train", noise_rng = NOISE_AUG)
+    val_set, val_loader = data_processor.create_ds("valid", noise_rng = NOISE_AUG)
 
 #==========#
 
 #model set up
-model = SegUNet(13)
+model = DualSegHeatmaps(13)
 
+#load pretrained seg encoder
 trained_unet = torch.load("./SEGMENTATIONS/mod_seg/model_saves/segunet.pth", map_location = "cpu")
 trained_enc = {k.replace("encoder.", ""): v for k, v in trained_unet.items() if k.startswith("encoder.")}
-model.encoder.load_state_dict(trained_enc)
+model.seg_encoder.load_state_dict(trained_enc)
 
 if load_path:
-    model.load_state_dict(torch.load(f"./heatmaps_backbone/model_saves/{load_path}"))
+    model.load_state_dict(torch.load(f"./dual_heatmaps/model_saves/{load_path}"))
 
-for param in model.encoder.parameters():
+#freeze seg encoder
+for param in model.seg_encoder.parameters():
     param.requires_grad = False
 
 #loss function
 lossfn = lambda ypred, yvals, aug_scales : torch.mean(torch.sum(torch.norm(ypred - yvals, dim = 2), dim = 1) / aug_scales)
 
-#optimizer
-optimizer = optim.Adam(model.parameters(), lr = learning_rate)
+#optimizer (only train raw encoder + decoder)
+optimizer = optim.Adam(filter(lambda p: p.requires_grad, model.parameters()), lr = learning_rate)
 
 #training
 early_stop_cnt = 0
@@ -120,7 +121,7 @@ for epoch in range(epoch_cnt):
     model.train()
 
     total_loss = 0
-    
+
     for images, yvals, aug_scales in tqdm(train_loader, unit = "batch"):
         images = images.to(device)
         yvals = yvals.to(device)
@@ -131,7 +132,7 @@ for epoch in range(epoch_cnt):
         model_coord = abs_kp_to_coord(abs_coord)
         ab = get_ab(model_coord)
         real_coord = measurements_to_coord(yvals, ab, pix_per_mm, img_scale_factor)
-        
+
         loss = lossfn(model_coord, real_coord, aug_scales)
 
         optimizer.zero_grad()
@@ -152,7 +153,7 @@ for epoch in range(epoch_cnt):
             images = images.to(device)
             yvals = yvals.to(device)
             aug_scales = aug_scales.to(device)
-            
+
             hm = model(images)
             abs_coord = heatmaps_to_keypoints(hm)
             model_coord = abs_kp_to_coord(abs_coord)
@@ -178,11 +179,11 @@ for epoch in range(epoch_cnt):
     else:
         early_stop_cnt = 0
         best_val_loss = total_loss
-        torch.save(model.state_dict(), './heatmaps_backbone/model_saves/current_best.pth')
+        torch.save(model.state_dict(), './dual_heatmaps/model_saves/current_best.pth')
 
     if early_stop_cnt >= early_stop_lim:
         print('EARLY STOPPED')
         break
 
-model.load_state_dict(torch.load("./heatmaps_backbone/model_saves/current_best.pth"))
-torch.save(model.state_dict(), "./heatmaps_backbone/model_saves/final_model.pth")
+model.load_state_dict(torch.load("./dual_heatmaps/model_saves/current_best.pth"))
+torch.save(model.state_dict(), "./dual_heatmaps/model_saves/final_model.pth")
