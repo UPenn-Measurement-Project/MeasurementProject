@@ -146,6 +146,8 @@ with torch.no_grad():
         plt.figure(figsize = (6, 3))
         plt.subplot(1, 2, 1)
         plt.imshow(images[0][0].detach().cpu(), cmap = 'gray')
+        plt.xlabel('x (pixels)')
+        plt.ylabel('y (pixels)')
 
         plt.subplot(1, 2, 2)
         plt.scatter(model_coord[0, :, 0].detach().cpu(), model_coord[0, :, 1].detach().cpu(), c = 'r')
@@ -163,7 +165,9 @@ with torch.no_grad():
         plt.xlabel('x (pixels)')
         plt.ylabel('y (pixels)')
 
-        plt.savefig(f"./test_results/img/{idx}.png")
+        plt.tight_layout()
+        plt.savefig(f"./test_results/img/{idx}.png", dpi = 300)
+        plt.close()
 
         if make_csv:
             for i in range(yvals.shape[0]):
