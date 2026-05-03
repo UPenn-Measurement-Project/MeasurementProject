@@ -1,4 +1,5 @@
 #imports
+import os
 import argparse
 import matplotlib.pyplot as plt
 import pandas as pd
@@ -112,6 +113,7 @@ finrow = {"id": "avg"}
 for i in mcols:
     finrow[i] = 0
 
+os.makedirs("./seg_heatmaps/test_results/img", exist_ok=True)
 with torch.no_grad():
     for idx, (images, yvals, aug_scales) in enumerate(tqdm(dataloader, unit = "batch")):
         images = images.to(device)

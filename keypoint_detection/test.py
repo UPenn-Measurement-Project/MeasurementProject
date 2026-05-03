@@ -1,4 +1,5 @@
 #imports
+import os
 import argparse
 import matplotlib.pyplot as plt
 from tqdm import tqdm
@@ -90,6 +91,7 @@ print("\n==========\n\nTesting started\n\n")
 model.to(device)
 model.eval()
 
+os.makedirs("./test_results", exist_ok=True)
 with torch.no_grad():
     for idx, source_images in enumerate(tqdm(dataloader, unit = "batch")):
         source_images = source_images.to(device)

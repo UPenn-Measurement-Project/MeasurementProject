@@ -1,4 +1,5 @@
 #imports
+import os
 import argparse
 import matplotlib.pyplot as plt
 from tqdm import tqdm
@@ -100,6 +101,7 @@ model.eval()
 all_errs = None
 total_percent_err = torch.zeros(10).to(device)
 
+os.makedirs("./test_results", exist_ok=True)
 with torch.no_grad():
     for idx, (images, yvals, aug_scales) in enumerate(tqdm(dataloader, unit = "batch")):
         images = images.to(device)
