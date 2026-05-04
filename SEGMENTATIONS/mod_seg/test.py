@@ -8,8 +8,8 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 
-from data_utils.data_utils import DataProcessor
-from model.model import SegUNet
+from SEGMENTATIONS.mod_seg.data_utils.data_utils import DataProcessor
+from SEGMENTATIONS.mod_seg.model.model import SegUNet
 
 #==========#
 
@@ -83,8 +83,8 @@ dataset, dataloader = data_processor.create_ds(test_set_name)
 #model set up
 model = SegUNet()
 
-model.load_state_dict(torch.load(f"./model_saves/{model_path}"))
-print(f"\n==========\n\nModel loaded from./model_saves/{model_path}")
+model.load_state_dict(torch.load(f"SEGMENTATIONS/mod_seg/model_saves/{model_path}"))
+print(f"\n==========\n\nModel loaded from SEGMENTATIONS/mod_seg/model_saves/{model_path}")
 
 #testing
 print("\n==========\n\nTesting started\n\n")
@@ -121,7 +121,7 @@ with torch.no_grad():
         colordiff = torch.cat((pred, emptychan, segs), dim = 1)
         plt.imshow(colordiff[0].detach().cpu().permute(1, 2, 0))
 
-        plt.savefig(f"./test_results/img/{idx}.png")
+        plt.savefig(f"SEGMENTATIONS/mod_seg/test_results/img/{idx}.png")
 
 mean_dice = sum(dice_scores) / len(dice_scores)
 print(f"\n==========\n\nDice Coefficient Results ({test_set_name} set):")

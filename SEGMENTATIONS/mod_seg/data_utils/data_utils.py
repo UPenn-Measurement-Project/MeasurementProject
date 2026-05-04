@@ -2,6 +2,7 @@
 import numpy as np
 import pandas as pd
 import os
+import random
 from tqdm import tqdm
 
 import pydicom
@@ -10,6 +11,7 @@ import nibabel as nib
 import torch
 import torch.nn.functional as F
 import torchvision.transforms.functional as TF
+from torchvision.transforms.functional import InterpolationMode
 from torch.utils.data import Dataset, DataLoader
 
 #datapoint class
@@ -73,20 +75,49 @@ class DataPoint:
 
 #torch inherited dataset class
 class ImageDataset(Dataset):
-    def __init__(self, data_points):
+    def __init__(self, data_points, augment = False, iaugment = False):
         self.data_points = data_points
+        self.augment = augment
+        self.iaugment = iaugment
 
     def __len__(self):
         return len(self.data_points)
 
     def __getitem__(self, idx):
-        return self.data_points[idx].data
+        img, mask = self.data_points[idx].data
+
+        if self.augment:
+            angle = random.uniform(-12, 12)
+            scale = random.uniform(0.85, 1.15)
+            tx = int(random.uniform(-0.05, 0.05) * img.shape[-1])
+            ty = int(random.uniform(-0.05, 0.05) * img.shape[-2])
+
+            img = TF.affine(img, angle = angle, translate = [tx, ty], scale = scale, shear = 0,
+                            interpolation = InterpolationMode.BILINEAR, fill = 0)
+            mask = TF.affine(mask, angle = angle, translate = [tx, ty], scale = scale, shear = 0,
+                             interpolation = InterpolationMode.NEAREST, fill = 0)
+
+        if self.iaugment:
+            # gaussian noise
+            noise_std = random.uniform(0.0, 0.05)
+            img = (img + torch.randn_like(img) * noise_std).clamp(0, 1)
+
+            # contrast/brightness jitter
+            contrast = random.uniform(0.6, 1.4)
+            brightness = random.uniform(-0.15, 0.15)
+            img = (img * contrast + brightness).clamp(0, 1)
+
+            # gamma
+            gamma = random.uniform(0.6, 1.5)
+            img = img.pow(gamma)
+
+        return img, mask
 
 #class for creating dataset
 class DataProcessor:
     def __init__(self, train_val_split, batch_size, og_width, og_height, tar_width, tar_height, seed, fill_noise, mirror):
-        self.xrayfi = "../../data/segmentation/data/xray/"
-        self.segfi = "../../data/segmentation/data/seg/"
+        self.xrayfi = "data/segmentation/data/xray/"
+        self.segfi = "data/segmentation/data/seg/"
 
         self.train_split = train_val_split[0]
         self.val_split = train_val_split[1]
@@ -117,7 +148,7 @@ class DataProcessor:
         self.val_img = [all_img[i] for i in all_idx[train_sz:train_sz + val_sz]]
         self.test_img = [all_img[i] for i in all_idx[train_sz + val_sz:]]
     
-    def create_ds(self, ds_name):
+    def create_ds(self, ds_name, augment = False, iaugment = False):
         if ds_name == "train":
             ds = self.train_img
             batch_size = self.train_batch
@@ -138,7 +169,7 @@ class DataProcessor:
             data_points.append(DataPoint(self.xrayfi + img_file + ".dcm", self.segfi + img_file + ".nii.gz", self.og_width, self.og_height, self.tar_width, self.tar_height, self.fill_noise, self.mirror))
         print(f"Loaded {ds_name} with {len(data_points)} points")
 
-        dataset = ImageDataset(data_points)
+        dataset = ImageDataset(data_points, augment = augment, iaugment = iaugment)
         dataloader = DataLoader(dataset, batch_size = batch_size, shuffle = shuffle)
 
         return dataset, dataloader

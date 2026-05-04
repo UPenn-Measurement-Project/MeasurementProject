@@ -1,0 +1,8 @@
+experiment,dataset,mean_dice,min_dice,max_dice,count
+baseline,test,0.9647,0.0000,0.9922,605
+loss_dice,test,0.9674,0.0000,0.9932,605
+loss_bce_dice,test,0.9675,0.0000,0.9940,605
+loss_focal,test,0.9541,0.0000,0.9881,605
+aug_geom,test,0.9646,0.0000,0.9926,605
+scheduler,test,0.9656,0.0000,0.9934,605
+combined,test,0.9679,0.0000,0.9935,605

@@ -5,10 +5,11 @@ import matplotlib.pyplot as plt
 
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 import torch.optim as optim
 
-from data_utils.data_utils import DataProcessor
-from model.model import SegUNet
+from SEGMENTATIONS.mod_seg.data_utils.data_utils import DataProcessor
+from SEGMENTATIONS.mod_seg.model.model import SegUNet
 
 #==========#
 
@@ -33,6 +34,11 @@ parser.add_argument("--esl", type = int, default = 5, required = False, help = "
 
 parser.add_argument("--load", type = str, default = "", required = False, help = "Load a model to continue training (./model_saves)")
 
+parser.add_argument("--loss", type = str, default = "bce", choices = ["bce", "dice", "bce_dice"], help = "Loss function")
+parser.add_argument("--aug", action = "store_true", help = "Enable geometric augmentation (rotation, scale, translation)")
+parser.add_argument("--iaug", action = "store_true", help = "Enable intensity augmentation (noise, contrast, gamma)")
+parser.add_argument("--scheduler", action = "store_true", help = "Enable ReduceLROnPlateau LR scheduler")
+
 parser.add_argument("--noise", action = "store_true", help = "Fill image will noise")
 parser.add_argument("--mirror", action = "store_true", help = "Mirror femur to left")
 
@@ -56,6 +62,10 @@ epoch_cnt = args.epoch
 learning_rate = args.lr
 early_stop_lim = args.esl
 load_path = None if args.load == "" else args.load
+loss_fn_name = args.loss
+use_aug = args.aug
+use_iaug = args.iaug
+use_scheduler = args.scheduler
 fill_noise = args.noise
 mirror = args.mirror
 seed = args.seed
@@ -67,7 +77,8 @@ test_batch_size = args.test_bs
 batch_sizes = (train_batch_size, val_batch_size, test_batch_size)
 
 print("\nSelected settings:\n")
-print(f"Max epoch cnt: {epoch_cnt}\nLearning rate: {learning_rate}\nEarly stopping limit: {early_stop_lim}\nLoad pretrained: {load_path}\nTorch seed: {seed}\n")
+print(f"Max epoch cnt: {epoch_cnt}\nLearning rate: {learning_rate}\nEarly stopping limit: {early_stop_lim}\nLoad pretrained: {load_path}\nTorch seed: {seed}")
+print(f"Loss: {loss_fn_name} | Aug: {use_aug} | IAug: {use_iaug} | Scheduler: {use_scheduler}")
 print(f"Data split: {(train_split, val_split, 1 - train_split - val_split)}")
 print(f"Batch size: {batch_sizes}\n")
 
@@ -76,22 +87,43 @@ print(f"Batch size: {batch_sizes}\n")
 #data
 print("==========\n\nBegin dataset loading:\n")
 data_processor = DataProcessor((train_split, val_split), batch_sizes, og_width, og_height, tar_width, tar_height, seed, fill_noise, mirror)
-train_set, train_loader = data_processor.create_ds("train")
+train_set, train_loader = data_processor.create_ds("train", augment = use_aug, iaugment = use_iaug)
 val_set, val_loader = data_processor.create_ds("valid")
 
 #==========#
+
+#loss functions
+
+bce_fn = nn.BCELoss()
+
+def dice_loss(pred, target, smooth = 1e-6):
+    pred_flat = pred.view(pred.size(0), -1)
+    tgt_flat = target.view(target.size(0), -1)
+    intersection = (pred_flat * tgt_flat).sum(dim = 1)
+    dice_coeff = (2.0 * intersection + smooth) / (pred_flat.sum(dim = 1) + tgt_flat.sum(dim = 1) + smooth)
+    return 1.0 - dice_coeff.mean()
+
+def compute_loss(pred, target):
+    if loss_fn_name == "bce":
+        return bce_fn(pred, target)
+    elif loss_fn_name == "dice":
+        return dice_loss(pred, target)
+    elif loss_fn_name == "bce_dice":
+        return 0.5 * bce_fn(pred, target) + 0.5 * dice_loss(pred, target)
 
 #model set up
 model = SegUNet()
 
 if load_path:
-    model.load_state_dict(torch.load(f"./model_saves/{load_path}"))
-
-#loss function
-lossfn = nn.BCELoss()
+    model.load_state_dict(torch.load(f"SEGMENTATIONS/mod_seg/model_saves/{load_path}"))
 
 #optimizer
 optimizer = optim.Adam(model.parameters(), lr = learning_rate)
+
+#scheduler
+scheduler = None
+if use_scheduler:
+    scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode = "min", patience = 2, factor = 0.5)
 
 #training
 early_stop_cnt = 0
@@ -103,14 +135,14 @@ for epoch in range(epoch_cnt):
     model.train()
 
     total_loss = 0
-    
+
     for xrays, segs in tqdm(train_loader, unit = "batch"):
         xrays = xrays.to(device)
         segs = segs.to(device)
 
         pred = model(xrays)
 
-        loss = lossfn(pred, segs)
+        loss = compute_loss(pred, segs)
 
         optimizer.zero_grad()
         loss.backward()
@@ -131,23 +163,26 @@ for epoch in range(epoch_cnt):
 
             pred = model(xrays)
 
-            loss = lossfn(pred, segs)
+            loss = compute_loss(pred, segs)
 
             total_loss += loss.item() * xrays.shape[0]
 
         print(f'Loss (validation): {total_loss / len(val_set)}\n')
         print('\n===\n')
 
+    if scheduler:
+        scheduler.step(total_loss / len(val_set))
+
     if total_loss > best_val_loss:
         early_stop_cnt += 1
     else:
         early_stop_cnt = 0
         best_val_loss = total_loss
-        torch.save(model.state_dict(), './model_saves/current_best.pth')
+        torch.save(model.state_dict(), 'SEGMENTATIONS/mod_seg/model_saves/current_best.pth')
 
     if early_stop_cnt >= early_stop_lim:
         print('EARLY STOPPED')
         break
 
-model.load_state_dict(torch.load("./model_saves/current_best.pth"))
-torch.save(model.state_dict(), "./model_saves/final_model.pth")
+model.load_state_dict(torch.load("SEGMENTATIONS/mod_seg/model_saves/current_best.pth"))
+torch.save(model.state_dict(), "SEGMENTATIONS/mod_seg/model_saves/final_model.pth")
