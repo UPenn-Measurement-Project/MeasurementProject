@@ -83,8 +83,7 @@ val_batch_size = args.val_bs
 test_batch_size = args.test_bs
 batch_sizes = (train_batch_size, val_batch_size, test_batch_size)
 
-if model_name not in ["basic", "alex"]:
-    raise ValueError(f"Unknown model type: {model_name}")
+
 if batch_norm_setting not in ["none", "before", "after"]:
     raise ValueError(f"Unknown batch norm setting: {batch_norm_setting}")
 
@@ -136,7 +135,7 @@ for epoch in range(epoch_cnt):
         aug_scales = aug_scales.to(device)
 
         model_out = model(images)
-        real_measurements = yvals[:, :9]
+        real_measurements = yvals[:, :10]
 
         loss = lossfn(model_out, real_measurements)
 
@@ -150,7 +149,7 @@ for epoch in range(epoch_cnt):
     print(f'Loss (in sample): {total_loss / len(train_set)}')
 
     total_loss = 0
-    total_percent_err = torch.zeros(9).to(device)
+    total_percent_err = torch.zeros(10).to(device)
 
     model.eval()
     with torch.no_grad():
@@ -160,7 +159,7 @@ for epoch in range(epoch_cnt):
             yvals = yvals.to(device)
             aug_scales = aug_scales.to(device)
             model_out = model(images)
-            real_measurements = yvals[:, :9]
+            real_measurements = yvals[:, :10]
             loss = lossfn(model_out, real_measurements)
             total_loss += loss.item() * images.shape[0]
             percent_err = torch.abs(real_measurements - model_out) / (real_measurements + 1e-8)
